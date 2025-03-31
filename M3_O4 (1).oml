@@ -1,0 +1,116 @@
+%9th Feb 2025
+%MSA Frame
+clc 
+clear
+x_line=[0:20:2000];
+y_line1=0;
+y_line2=300;
+y_line3=150;
+z_line12=0;
+z_line3=300;
+num_tubes=3;
+
+node=zeros(3*length(x_line),3);
+node(1:length(x_line),2)=y_line1;
+node(length(x_line)+1:2*length(x_line),2)=y_line2;
+node(2*length(x_line)+1:3*length(x_line),2)=y_line3;
+node(1:2*length(x_line),3)=z_line12;
+node(2*length(x_line)+1:3*length(x_line),3)=z_line3;
+for n=1:length(x_line)
+	node(n,1)=x_line(n);
+end
+for n=1+length(x_line):2*length(x_line)
+	node(n,1)=x_line(n-length(x_line));
+end
+for n=1+2*length(x_line):3*length(x_line)
+	node(n,1)=x_line(n-2*length(x_line));
+end
+node_view=node;
+
+%Rearrange node matrix fot partitioning
+spc_id=[1 101 102 202 203 303]; 
+spc_nodes=zeros(length(spc_id),3);
+for n=1:length(spc_id)
+	spc_nodes(n,:)=node(spc_id(n),:);
+end
+node(spc_id,:)=[];
+node=vertcat(node,spc_nodes);
+num_nodes=length(node);
+
+%Assemble members
+t1=[1:99];
+t2=[100:198];
+t3=[199:297];
+for n=1:length(t1)-1
+member1(n,1)=t1(n);
+member1(n,2)=t1(n+1);
+end
+for n=1:length(t2)-1
+member2(n,1)=t2(n);
+member2(n,2)=t2(n+1);
+end
+for n=1:length(t3)-1
+member3(n,1)=t3(n);
+member3(n,2)=t3(n+1);
+end
+extra=[298 300; 300 302; 298 302; 299 301; 301 303; 299 303];
+extra2=[1 298; 99 299; 300 100; 198 301; 302 199; 297 303];
+triangulation12=[1 124; 124 50; 50 174; 174 99];
+triangulation23=[100 224; 224 150; 150 274; 274 198];
+triangulation13=[1 224; 224 50; 50 274; 274 99];
+x0=[triangulation12; triangulation13; triangulation23];
+member=[member1; member2; member3; extra; extra2; x0];
+num_elems=length(member);
+x=6;                     %3 if 2D, 6 if 3D
+num_dof=x*num_nodes;
+E=1;
+G=1;
+
+for n=1:num_elems
+	A(n)=1;
+	I_y(n)=1;
+	I_z(n)=1;
+	JJ(n)=1;
+end
+
+
+
+%Input forces
+load_on=1;
+force=-0.0000001;
+if load_on==1
+	for n=1:length(t3)
+		nodeID = t1(n);
+		dofIndex = 6*(nodeID-1) + 3;
+		P(dofIndex) = force;
+	end
+	elseif load_on==2
+		for n=1:length(t3)
+		nodeID = t2(n);
+		dofIndex = 6*(nodeID-1) + 3;
+		P(dofIndex) = force;
+		end
+	else 
+		for n=1:length(t3)
+		nodeID = t3(n);
+		dofIndex = 6*(nodeID-1) + 3;
+		P(dofIndex) = force;
+		end
+	end
+	
+%Constraints
+Uk=[];
+for n=length(node)-length(spc_id)+1:length(node)
+	dofs = [x*n-5:x*n];
+	Uk=[Uk, dofs];
+end
+Uu=setdiff(1:num_dof, Uk);
+x0_vec=reshape(x0, 24, 1);
+
+tanu_handle=@(x0)tanu(num_elems, Uu, Uk, member, node, A, E, I_z, I_y, G, JJ, num_dof, x, num_nodes, force, x0, t1, t2, t3);
+nonlcon_handle=@(x0_vec)nonlcon(x0_vec);
+nvars=length(x0_vec);
+Intcon=1:nvars;
+options=gaoptimset('Display', 'iter');
+
+[x,fval,info,output] = ga(tanu_handle, nvars, [], [], [], [], [], [], nonlcon_handle, options, Intcon)

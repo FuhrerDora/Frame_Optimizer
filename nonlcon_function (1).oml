@@ -1,0 +1,5 @@
+function [c, ceq] = nonlcon(x0_vec)
+    epsilon = 1e-5;  % Small margin to prevent equality
+    c = x0_vec(1:end-1) - x0_vec(2:end) + epsilon;  % x_i < x_{i+1}
+    ceq = [];  % No equality constraints
+end

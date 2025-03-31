@@ -1,0 +1,86 @@
+function flexibility=tanu(num_elems, Uu, Uk, member, node, A, E, I_z, I_y, G, JJ, num_dof, x, num_nodes, force, x0_vec, t1, t2, t3)
+	x0=reshape(x0_vec, 12, 2);
+	U=zeros(num_dof,1);
+	Kg=zeros(num_dof,num_dof);
+	P=zeros(num_dof,1);
+	
+	K11=zeros(length(Uu),length(Uu));
+	K21=zeros(length(Uu),length(Uk));
+
+	for n=1:num_elems
+		a=member(n,1);
+		b=member(n,2);
+	
+		L=sqrt((node(a,2)-node(b,2))^2+(node(a,1)-node(b,1))^2+(node(a,3)-node(b,3))^2);
+	
+		cxx=(node(a,1)-node(b,1))/L;
+		cyx=(node(a,2)-node(b,2))/L;
+		czx=(node(a,3)-node(b,3))/L;
+		d=sqrt(cxx^2+cyx^2);
+			if (cxx == 0 && cyx == 0)  % If element is along z-axis
+			cxy = 1; cyy = 0; czy = 0;
+			else
+			cxy=-cyx/d;
+			cyy=cxx/d;
+			czy=0;
+			cxz=-cxx*czx/d;
+			cyz=-cyy*czx/d;  %check
+			czz=d;
+			end
+		
+		 R=[cxx cyx czx; cxy cyy czy; cxz cyz czz];
+		 T = blkdiag(R, R, R, R);
+		
+		 Kee= [A(n)*E/L, 0, 0, 0, 0, 0, -A(n)*E/L, 0, 0, 0, 0, 0;
+		 0, 12*E*I_z(n)/L^3, 0, 0, 0, 6*E*I_z(n)/L^2, 0, -12*E*I_z(n)/L^3, 0, 0, 0, 6*E*I_z(n)/L^2;
+		 0, 0, 12*E*I_y(n)/L^3, 0, -6*E*I_y(n)/L^2, 0, 0, 0, -12*E*I_y(n)/L^3, 0, -6*E*I_y(n)/L^2, 0;
+		 0, 0, 0, G*JJ(n)/L, 0, 0, 0, 0, 0, -G*JJ(n)/L, 0, 0;
+		 0, 0, -6*E*I_y(n)/L^2, 0, 4*E*I_y(n)/L, 0, 0, 0, 6*E*I_y(n)/L^2, 0, 2*E*I_y(n)/L, 0;
+		 0, 6*E*I_z(n)/L^2, 0, 0, 0, 4*E*I_z(n)/L, 0, -6*E*I_z(n)/L^2, 0, 0, 0, 2*E*I_z(n)/L;
+		 -A(n)*E/L, 0, 0, 0, 0, 0, A(n)*E/L, 0, 0, 0, 0, 0;
+		 0, -12*E*I_z(n)/L^3, 0, 0, 0, -6*E*I_z(n)/L^2, 0, 12*E*I_z(n)/L^3, 0, 0, 0, -6*E*I_z(n)/L^2;
+		 0, 0, -12*E*I_y(n)/L^3, 0, 6*E*I_y(n)/L^2, 0, 0, 0, 12*E*I_y(n)/L^3, 0, 6*E*I_y(n)/L^2, 0;
+		 0, 0, 0, -G*JJ(n)/L, 0, 0, 0, 0, 0, G*JJ(n)/L, 0, 0;
+		 0, 0, -6*E*I_y(n)/L^2, 0, 2*E*I_y(n)/L, 0, 0, 0, 6*E*I_y(n)/L^2, 0, 4*E*I_y(n)/L, 0;
+		 0, 6*E*I_z(n)/L^2, 0, 0, 0, 2*E*I_z(n)/L, 0, -6*E*I_z(n)/L^2, 0, 0, 0, 4*E*I_z(n)/L];
+
+		Ke=transpose(T)*Kee*T;
+		
+		mdv = [x*a-5:x*a x*b-5:x*b];
+		
+		%Assembling global Kg
+		for p=1:12
+			for q=1:12
+				Kg(mdv(p),mdv(q))=Kg(mdv(p),mdv(q))+Ke(p,q);
+			end
+		end
+	end
+
+	%Partitioning Stiffness Matrix and Load Vector
+	for p=1:length(Uu)
+		
+		for q=1:length(Uu)
+			K11(p,q)=Kg(Uu(p),Uu(q));
+		end
+		
+		for q=length(Uk)
+			K21=Kg(Uk(q),Uu(p));
+		end
+		
+		P_known(p)=P(Uu(p));
+	end
+
+	%Resultant Displacements
+	Displacement=linsolve(K11,transpose(P_known));
+	U=zeros(x*num_nodes);
+	for n=1:length(Displacement)
+			U(n)=Displacement(n);
+	end
+
+	%Reaction Forces
+	%Pu=K21*Uu;
+
+	%Output Stiffness
+	stiffness=force*length(t1)/sum(abs(Uu));
+	flexibility=-1*stiffness;
+end
